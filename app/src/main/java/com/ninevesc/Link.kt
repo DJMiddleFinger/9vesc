@@ -13,6 +13,7 @@ class Link(app: Application) : AndroidViewModel(app) {
     val transport = VescBleTransport(app)
     val state = MutableStateFlow<G30State?>(null)
     val message = MutableStateFlow<String?>(null)
+    val demo = MutableStateFlow(false)
 
     private val decoder = PacketDecoder()
     private var replyWatch: Job? = null
@@ -28,7 +29,7 @@ class Link(app: Application) : AndroidViewModel(app) {
                 if (s is VescBleTransport.State.Connected) {
                     decoder.reset()
                     send(G30.read())
-                } else {
+                } else if (!demo.value) {
                     state.value = null
                     if (s is VescBleTransport.State.Failed) message.value = s.reason
                 }
@@ -42,20 +43,35 @@ class Link(app: Application) : AndroidViewModel(app) {
         message.value = when {
             s.status == 1 -> "Stop the scooter to change settings."
             s.status == 2 -> "The controller didn't accept that. Is the script up to date?"
-            s.vars.size < 30 || s.confs.size < 20 -> "The script on the controller is older than this app. Upload lisp/g30_dash_9vesc.lisp again."
+            s.vars.size < G30.VAR_COUNT || s.confs.size < G30.CONF_COUNT -> "The script on the controller is older than this app. Upload lisp/g30_dash_9vesc.lisp again."
             else -> null
         }
     }
 
     fun connect(address: String) = viewModelScope.launch {
+        demo.value = false
         message.value = null
         transport.connect(address)
     }
 
-    fun disconnect() = transport.disconnect()
+    fun disconnect() {
+        demo.value = false
+        transport.disconnect()
+        state.value = null
+    }
 
-    fun set(f: Field, raw: Double) = send(G30.set(f, raw))
-    fun storeConf() = send(G30.storeConf())
+    /** Fake controller: changes only live in [state] until the app closes. */
+    fun startDemo() {
+        replyWatch?.cancel()
+        demo.value = true
+        transport.disconnect()
+        message.value = null
+        state.value = G30.demo
+    }
+
+    fun set(f: Field, raw: Double) {
+        if (demo.value) state.value = state.value?.with(f, raw) else send(G30.set(f, raw))
+    }
 
     private fun send(payload: ByteArray) {
         replyWatch?.cancel()

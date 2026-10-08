@@ -6,6 +6,6 @@
     android:viewportHeight="108">
     <!-- Lightning bolt inside the adaptive-icon safe zone -->
     <path
-        android:fillColor="#FFFF6A00"
+        android:fillColor="#FF4A80C8"
         android:pathData="M60,28 L38,58 L51,58 L46,80 L70,47 L57,47 Z" />
 </vector>

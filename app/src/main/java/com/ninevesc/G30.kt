@@ -29,6 +29,10 @@ data class Field(
 /** Script state from one reply: [status] 0 ok, 1 refused while moving, 2 bad request. */
 data class G30State(val status: Int, val vars: List<Double>, val confs: List<Double>) {
     fun raw(f: Field): Double? = (if (f.conf) confs else vars).getOrNull(f.id)
+
+    fun with(f: Field, raw: Double): G30State =
+        if (f.conf) copy(confs = confs.toMutableList().also { it[f.id] = raw })
+        else copy(vars = vars.toMutableList().also { it[f.id] = raw })
 }
 
 object G30 {
@@ -36,7 +40,6 @@ object G30 {
     private const val MAGIC = 71 // 'G'
 
     fun read(): ByteArray = byteArrayOf(CUSTOM_APP_DATA.toByte(), MAGIC.toByte(), 1)
-    fun storeConf(): ByteArray = byteArrayOf(CUSTOM_APP_DATA.toByte(), MAGIC.toByte(), 4)
     fun set(f: Field, raw: Double): ByteArray =
         PayloadWriter().u8(CUSTOM_APP_DATA).u8(MAGIC).u8(if (f.conf) 3 else 2).u8(f.id).f32Auto(raw).build()
 
@@ -50,6 +53,21 @@ object G30 {
         return G30State(status, List(nv) { r.f32Auto().toDouble() }, List(nc) { r.f32Auto().toDouble() })
     }
 
+    /** Script defaults plus typical G30 VESC config, for demo mode. */
+    val demo = G30State(
+        0,
+        listOf(
+            7.0, 0.6, 2000.0, 0.0, 1.0, 17.0, 0.7, 2000.0, 0.0, 1.0, 25.0, 1.0, 2000.0, 0.0, 1.0,
+            1.0, 1.0, 5.0, 1.0, 7.0, 85.0, 120.0, 0.55, 0.55, 1.0, 2.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.9, 2.2,
+        ),
+        listOf(
+            60.0, -60.0, 40.0, -15.0, 150.0, 50000.0, -50000.0, 0.95, 25.0, 57.0, 34.0, 31.0,
+            85.0, 100.0, 0.85, 0.4, 0.2, 0.254, 30.0, 10.0,
+        ),
+    )
+    const val VAR_COUNT = 33
+    const val CONF_COUNT = 20
+
     val modes = listOf("Eco" to 0, "Drive" to 5, "Sport" to 10)
     fun modeFields(base: Int) = listOf(
         Field(base, "Top speed", 1.0, 99.0, unit = "km/h"),
@@ -59,7 +77,7 @@ object G30 {
         Field(base + 4, "Regen braking", 0.0, 100.0, unit = "%", scale = 100.0),
     )
 
-    private val offOn = listOf(0.0 to "Off", 1.0 to "On")
+    val offOn = listOf(0.0 to "Off", 1.0 to "On")
     private val dashValues = listOf(
         "Speed", "Battery %", "Controller °C", "Motor °C", "Battery A", "Motor A",
         "Power ×100 W", "Cell V ×10", "Trip km", "Duty %", "Battery V",
@@ -77,9 +95,13 @@ object G30 {
         Field(19, "Auto power off (0 = never)", 0.0, 30.0, unit = "min"),
     )
 
-    val calibration = listOf(
-        Field(22, "Throttle dead zone", 0.3, 1.5, 0.01, "V"),
-        Field(23, "Brake dead zone", 0.3, 1.5, 0.01, "V"),
+    val brake = listOf(
+        Field(30, "Strong regen on brake lever", options = offOn),
+        Field(31, "Regen at first touch", 0.0, 100.0, unit = "%", scale = 100.0),
+        Field(32, "Lever fully pulled at", 0.5, 3.3, 0.05, "V"),
+        Field(23, "Lever starts braking at", 0.3, 1.5, 0.01, "V"),
+        Field(1, "Max motor brake current", 0.0, 300.0, unit = "A", scale = -1.0, conf = true),
+        Field(3, "Max battery regen current", 0.0, 250.0, unit = "A", scale = -1.0, conf = true),
     )
 
     val display = listOf(
@@ -120,6 +142,6 @@ object G30 {
             Field(18, "Motor poles", 2.0, 60.0, 2.0, conf = true),
             Field(19, "Battery cells in series", 6.0, 30.0, 1.0, conf = true),
         ),
-        "Input calibration" to calibration,
+        "Input calibration" to listOf(Field(22, "Throttle dead zone", 0.3, 1.5, 0.01, "V")),
     )
 }

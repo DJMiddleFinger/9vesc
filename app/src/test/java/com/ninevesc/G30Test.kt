@@ -24,6 +24,7 @@ class G30Test {
         assertEquals(0.7, s.raw(power.copy(id = 1))!!, 1e-6)
         assertEquals(-40.0, s.raw(Field(0, "x", conf = true))!!, 0.0)
         assertNull(s.raw(Field(2, "missing")))
+        assertEquals(9.0, s.with(power.copy(id = 0), 9.0).vars[0], 0.0)
         assertNull(G30.parse(reply.copyOf(reply.size - 1)))
     }
 

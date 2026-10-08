@@ -45,13 +45,19 @@
 (def disp-err 1) ; error digits when no fault: 0 off, 1 fet temp, 2 motor temp
 (def mph 0)
 
+; Brake lever (ADC2) regen boost: once the lever passes min-adc-brake the script commands the
+; brake itself, starting at brake-start of max regen and reaching 100% at brake-full-v.
+(def brake-boost 0)
+(def brake-start 0.9)
+(def brake-full-v 2.2)
+
 ; Order is the app protocol: index = id. Append only, or bump eeprom-magic.
 (def vars '(eco-speed eco-current eco-watts eco-fw eco-regen
             drive-speed drive-current drive-watts drive-fw drive-regen
             sport-speed sport-current sport-watts sport-fw sport-regen
             min-speed cruise-on cruise-after-sec brake-light-on off-timeout-min
             vesc-high-temp mot-high-temp min-adc-thr min-adc-brake thr-curve start-mode
-            disp-ride disp-idle disp-err mph))
+            disp-ride disp-idle disp-err mph brake-boost brake-start brake-full-v))
 (def confs '(l-current-max l-current-min l-in-current-max l-in-current-min l-abs-current-max
              l-max-erpm l-min-erpm l-max-duty l-min-vin l-max-vin l-battery-cut-start l-battery-cut-end
              l-temp-motor-start l-temp-motor-end foc-fw-duty-start
@@ -110,6 +116,7 @@
 ;break-light
 (def break-light-enabled 0)
 (def brake 0)
+(def boosting 0)
 
 ; Sound feedback
 (def feedback 0)
@@ -236,6 +243,16 @@
                 (app-adc-override 0 (shape-thr thr))
                 (app-adc-override 1 brake)
 
+                ; Brake boost takes over from the ADC app while the lever is pulled
+                (if (and (> brake-boost 0) (>= brake min-adc-brake) (= off 0) (= lock 0) (> current-speed min-speed))
+                    {
+                        (set 'boosting 1)
+                        (app-disable-output 100) ; lapses by itself if frames stop
+                        (set-brake-rel (brake-strength brake))
+                    }
+                    (set 'boosting 0)
+                )
+
                 ; time-out
                 (if (= off 0)
                     (if (> thr min-adc-thr)
@@ -278,7 +295,7 @@
                 }
 
             )
-            (if (app-is-output-disabled) ; Enable output when scooter is turned on
+            (if (and (app-is-output-disabled) (= boosting 0)) ; Enable output when scooter is turned on
                 (app-disable-output 0)
             )
         )
@@ -586,6 +603,12 @@
     )
 )
 
+(defun brake-strength(v)
+    (let ((x (if (> brake-full-v min-adc-brake) (/ (- v min-adc-brake) (- brake-full-v min-adc-brake)) 1)))
+        (+ brake-start (* (- 1 brake-start) (if (> x 1) 1 (if (< x 0) 0 x))))
+    )
+)
+
 ; Bends the throttle voltage between the ADC start and end calibration.
 (defun shape-thr(v)
     (let ((lo (conf-get 'adc-v1-start)) (hi (conf-get 'adc-v1-end)) (x (if (= hi lo) 0 (/ (- v lo) (- hi lo)))))
@@ -597,7 +620,7 @@
 )
 
 ; App link over COMM_CUSTOM_APP_DATA. Request: 'G' cmd [id f32]. Reply: 'G' status nvars nconfs vars.. confs.. (f32)
-; cmd 1 read, 2 set var (saved to EEPROM), 3 set VESC conf (RAM), 4 store VESC conf to flash. status 0 ok, 1 moving, 2 bad request
+; cmd 1 read, 2 set var (saved to EEPROM), 3 set VESC conf (saved to flash). status 0 ok, 1 moving, 2 bad request
 (defun send-state(status)
     (let ((nv (length vars)) (nc (length confs)) (buf (bufcreate (+ 4 (* 4 (+ nv nc))))))
         {
@@ -633,9 +656,9 @@
                         (apply-mode)
                         (send-state 0)
                     })
-                ((and (= cmd 3) (< id (length confs))) { (set-param (ix confs id) v) (send-state 0) })
-                ((= cmd 4)
+                ((and (= cmd 3) (< id (length confs)))
                     {
+                        (set-param (ix confs id) v)
                         (conf-store)
                         (loopforeach can-id (can-list-devs) (rcode-run can-id 0.5 '(conf-store)))
                         (send-state 0)
