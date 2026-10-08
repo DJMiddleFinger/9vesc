@@ -26,6 +26,11 @@ class G30Test {
         assertNull(s.raw(Field(2, "missing")))
         assertEquals(9.0, s.with(power.copy(id = 0), 9.0).vars[0], 0.0)
         assertNull(G30.parse(reply.copyOf(reply.size - 1)))
+
+        val live = PayloadWriter().u8(36).u8(76).f32Auto(1.25).build()
+        assertEquals(1.25, G30.parseBrake(live)!!, 0.0)
+        assertNull(G30.parse(live))
+        assertNull(G30.parseBrake(reply))
     }
 
     @Test

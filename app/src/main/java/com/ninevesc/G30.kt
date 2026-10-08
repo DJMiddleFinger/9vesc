@@ -40,6 +40,11 @@ object G30 {
     private const val MAGIC = 71 // 'G'
 
     fun read(): ByteArray = byteArrayOf(CUSTOM_APP_DATA.toByte(), MAGIC.toByte(), 1)
+    fun readBrake(): ByteArray = byteArrayOf(CUSTOM_APP_DATA.toByte(), MAGIC.toByte(), 5)
+
+    /** Live brake lever voltage from a cmd 5 reply ('L' f32). */
+    fun parseBrake(p: ByteArray): Double? =
+        if (p.size >= 6 && p[0].toInt() == CUSTOM_APP_DATA && p[1].toInt() == 76) PayloadReader(p, 2).f32Auto().toDouble() else null
     fun set(f: Field, raw: Double): ByteArray =
         PayloadWriter().u8(CUSTOM_APP_DATA).u8(MAGIC).u8(if (f.conf) 3 else 2).u8(f.id).f32Auto(raw).build()
 
@@ -95,10 +100,11 @@ object G30 {
         Field(19, "Auto power off (0 = never)", 0.0, 30.0, unit = "min"),
     )
 
+    val brakeFull = Field(32, "Lever fully pulled at", 0.5, 3.3, 0.05, "V")
     val brake = listOf(
         Field(30, "Strong regen on brake lever", options = offOn),
         Field(31, "Regen at first touch", 0.0, 100.0, unit = "%", scale = 100.0),
-        Field(32, "Lever fully pulled at", 0.5, 3.3, 0.05, "V"),
+        brakeFull,
         Field(23, "Lever starts braking at", 0.3, 1.5, 0.01, "V"),
         Field(1, "Max motor brake current", 0.0, 300.0, unit = "A", scale = -1.0, conf = true),
         Field(3, "Max battery regen current", 0.0, 250.0, unit = "A", scale = -1.0, conf = true),

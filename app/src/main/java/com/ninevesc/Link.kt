@@ -14,6 +14,7 @@ class Link(app: Application) : AndroidViewModel(app) {
     val state = MutableStateFlow<G30State?>(null)
     val message = MutableStateFlow<String?>(null)
     val demo = MutableStateFlow(false)
+    val brakeV = MutableStateFlow<Double?>(null)
 
     private val decoder = PacketDecoder()
     private var replyWatch: Job? = null
@@ -21,7 +22,9 @@ class Link(app: Application) : AndroidViewModel(app) {
     init {
         viewModelScope.launch {
             transport.incoming.collect { chunk ->
-                decoder.feed(chunk).forEach { p -> G30.parse(p)?.let(::onReply) }
+                decoder.feed(chunk).forEach { p ->
+                    G30.parse(p)?.let(::onReply) ?: G30.parseBrake(p)?.let { brakeV.value = it }
+                }
             }
         }
         viewModelScope.launch {
@@ -31,6 +34,7 @@ class Link(app: Application) : AndroidViewModel(app) {
                     send(G30.read())
                 } else if (!demo.value) {
                     state.value = null
+                    brakeV.value = null
                     if (s is VescBleTransport.State.Failed) message.value = s.reason
                 }
             }
@@ -41,9 +45,9 @@ class Link(app: Application) : AndroidViewModel(app) {
         replyWatch?.cancel()
         state.value = s
         message.value = when {
+            s.vars.size < G30.VAR_COUNT || s.confs.size < G30.CONF_COUNT -> "The script on the controller is older than this app. Upload lisp/g30_dash_9vesc.lisp again."
             s.status == 1 -> "Stop the scooter to change settings."
             s.status == 2 -> "The controller didn't accept that. Is the script up to date?"
-            s.vars.size < G30.VAR_COUNT || s.confs.size < G30.CONF_COUNT -> "The script on the controller is older than this app. Upload lisp/g30_dash_9vesc.lisp again."
             else -> null
         }
     }
@@ -71,6 +75,14 @@ class Link(app: Application) : AndroidViewModel(app) {
 
     fun set(f: Field, raw: Double) {
         if (demo.value) state.value = state.value?.with(f, raw) else send(G30.set(f, raw))
+    }
+
+    /** Asks for the brake lever voltage 4×/s for as long as the caller (the Brake section) is on screen. */
+    suspend fun pollBrake() {
+        while (true) {
+            if (transport.state.value is VescBleTransport.State.Connected) transport.send(VescPacket.encode(G30.readBrake()))
+            delay(250)
+        }
     }
 
     private fun send(payload: ByteArray) {

@@ -621,6 +621,7 @@
 
 ; App link over COMM_CUSTOM_APP_DATA. Request: 'G' cmd [id f32]. Reply: 'G' status nvars nconfs vars.. confs.. (f32)
 ; cmd 1 read, 2 set var (saved to EEPROM), 3 set VESC conf (saved to flash). status 0 ok, 1 moving, 2 bad request
+; cmd 5 live brake lever voltage, reply 'L' f32
 (defun send-state(status)
     (let ((nv (length vars)) (nc (length confs)) (buf (bufcreate (+ 4 (* 4 (+ nv nc))))))
         {
@@ -642,6 +643,7 @@
               (v (if (> (buflen data) 6) (bufget-f32 data 3) 0)))
             (cond
                 ((= cmd 1) (send-state 0))
+                ((= cmd 5) (let ((b (bufcreate 5))) { (bufset-u8 b 0 76) (bufset-f32 b 1 brake) (send-data b) }))
                 ((> (abs (* (get-speed) 3.6)) 3) (send-state 1)) ; flash writes stop the motor
                 ((and (= cmd 2) (< id (length vars)))
                     {

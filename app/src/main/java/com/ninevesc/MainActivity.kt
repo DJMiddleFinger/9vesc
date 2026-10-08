@@ -52,6 +52,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -183,6 +184,7 @@ private fun App(link: Link) {
                 0 -> {
                     G30.modes.forEach { (name, base) -> Section("$name mode", G30.modeFields(base), s, link) }
                     Section("Brake", G30.brake, s, link)
+                    LiveBrake(link)
                     Note("Max regen = motor brake current × the mode's regen %, and the battery regen current caps it too.")
                     Section("Riding", G30.riding, s, link)
                 }
@@ -209,9 +211,9 @@ private fun Header(title: String) =
 private fun Note(text: String) = Text(text, color = Dim, fontSize = 12.sp)
 
 @Composable
-private fun ShuButton(text: String, onClick: () -> Unit, outlined: Boolean = false) {
+private fun ShuButton(text: String, onClick: () -> Unit, outlined: Boolean = false, modifier: Modifier = Modifier.fillMaxWidth()) {
     val label: @Composable () -> Unit = { Text(text.uppercase(), letterSpacing = 1.sp, fontSize = 13.sp) }
-    val m = Modifier.fillMaxWidth().height(44.dp)
+    val m = modifier.height(44.dp)
     if (outlined) {
         OutlinedButton(onClick, m, shape = Square, border = BorderStroke(1.dp, Blue), colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)) { label() }
     } else {
@@ -232,6 +234,21 @@ private fun Section(title: String, fields: List<Field>, s: G30State, link: Link,
             else -> ValueSlider(f, raw, onSet)
         }
     }
+}
+
+/** Live brake lever voltage, so the lever settings above can be matched to the real lever. */
+@Composable
+private fun LiveBrake(link: Link) {
+    val v by link.brakeV.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { link.pollBrake() }
+    Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("Brake lever now", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            Text(v?.let { G30.brakeFull.format(it) + " V" } ?: "—", color = Blue, fontSize = 28.sp)
+        }
+        ShuButton("Use as fully pulled", { v?.let { link.set(G30.brakeFull, G30.brakeFull.snap(it)) } }, outlined = true, modifier = Modifier)
+    }
+    Note("Pull the brake all the way, then tap the button. Set \"Lever starts braking at\" a little above the reading with the lever released.")
 }
 
 @Composable

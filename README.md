@@ -24,6 +24,8 @@ built-in Bluetooth on a Spintend Ubox or a BLE module on a second UART.
     the brake lever (ADC2) passes its dead zone, the brake jumps to *Regen at first touch* (90% by default) and reaches 100%
     at *Lever fully pulled at*. 100% means the motor brake current × the mode's regen %. The battery regen current caps it too,
     and both can be set here.
+    *Brake lever now* shows the live lever voltage while you're connected. Pull the lever all the way and tap
+    **Use as fully pulled** to calibrate it.
 - **Display**: what the big digits show while riding and when stopped (speed, battery %, temperatures, amps, power, cell
   voltage, trip, duty, voltage), what the small red digits show, km/h or mph, and the temperatures that turn on the warning icon.
 - **Advanced**: VESC motor and battery current limits, ERPM, duty, voltage cutoffs, motor temperature limits, field-weakening start,
